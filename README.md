@@ -18,11 +18,20 @@ no install-time scripts. The upstream live-mode server, hooks and HIG re-pull sc
 
 ## Scanner
 
-`node scan.mjs <files-or-dirs...> [--json] [--browser] [--url <http(s)://...|file>]` is a static, offline checker
+`node scan.mjs <files-or-dirs...> [--json] [--browser] [--url <http(s)://...|file>] [--header "Name: value"] [--cookie "name=value"] [--settle-ms <n>]` is a static, offline checker
 ported from Impeccable's legacy JavaScript detector (Apache-2.0, see `NOTICE.md`). It walks directories (skipping
 `node_modules`, `.git`, `dist`, `build`) and scans `.html .htm .css .scss .sass .less .jsx .tsx .js .ts .vue .svelte
 .astro`. Output is one `path:line rule-id severity message` per finding, or a JSON array with `--json`. Exit 0: no
 findings, 1: findings, 2: usage error. Page-level findings that have no source line report line 1.
+
+Browser-tier options: pages are opened with the page's Content-Security-Policy bypassed (so the scan script can run),
+after `load` the scanner waits for the network to go idle (best effort) plus `--settle-ms` (default 1000) so
+data-driven pages finish rendering. `--header "Name: value"` and `--cookie "name=value"` are repeatable and scan
+logged-in pages: they are added only to requests for the scanned URL's own origin (cookie flags merge into one `Cookie` header;
+other origins the page loads never receive them; runs with credentials also relax Chromium's Local Network Access check so such pages can still load loopback resources) and their values are never printed. A page that fails to scan is
+reported on stderr and skipped; the exit code is 2 only when every browser target failed.
+Pixel contrast rates only the strongest glyph pixels (at least half the maximum change when text is hidden), and
+flags text only when both the 10th percentile and the median ratio are below the threshold.
 
 Tiers, from cheapest to richest. Each tier only adds findings; a missing tier never breaks the others.
 
