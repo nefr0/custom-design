@@ -1,0 +1,23 @@
+{
+ "title": "custom-design skill",
+ "subtitle": "Text playbooks plus an offline Node scanner; no binaries, no curl installs",
+ "items": [
+  {"group":"Skill text","sub":"SKILL.md router","border":"solid","color":"slate","icon":"book-open","items":[
+   {"id":"router","label":"Router","tech":"SKILL.md","desc":"Routes task to 2-4 files; verify step","icon":"signpost","color":"slate"},
+   {"id":"imp","label":"Impeccable playbooks","tech":"impeccable/","desc":"Fork build output, md only","icon":"file-text","color":"slate"},
+   {"id":"apple","label":"Apple HIG","tech":"apple/","desc":"124 HIG pages + lenses","icon":"apple","color":"slate"}]},
+  {"group":"Scanner","sub":"scan.mjs + scanner/","border":"dashed","color":"green","icon":"scan-search","items":[
+   {"id":"regex","label":"Regex tier","tech":"node built-ins","desc":"23 rules, no install","icon":"regex","color":"green"},
+   {"id":"static","label":"Static HTML tier","tech":"htmlparser2, css-tree (npm, pinned)","desc":"+14 rules; ignore-scripts","icon":"code","color":"green"},
+   {"id":"browser","label":"Browser tier","tech":"playwright (optional peer)","desc":"+7 DOM rules; skipped if absent","icon":"globe","color":"green"}]},
+  {"id":"agent","label":"Agent","tech":"Claude / Codex / Pi","desc":"Reads files, runs scan in verify","icon":"bot","color":"blue"}
+ ],
+ "edges": [
+  {"from":"agent","to":"router","label":"reads"},
+  {"from":"router","to":"imp","label":"routes"},
+  {"from":"router","to":"apple","label":"routes"},
+  {"from":"router","to":"regex","label":"verify: node scan.mjs"},
+  {"from":"regex","to":"static","label":"if npm installed"},
+  {"from":"static","to":"browser","label":"--browser / --url"}
+ ]
+}
