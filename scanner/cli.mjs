@@ -98,12 +98,12 @@ async function browserReports(browser, target, options) {
   } catch (error) {
     const secrets = Object.values(options.headers).flatMap((value) => [value, ...value.split('; ')]);
     process.stderr.write(`scan.mjs: browser scan of ${target} failed: ${redact(String(error.message).split('\n')[0], secrets)}\n`);
-    return [];
+    return null;
   }
 }
 
 async function runBrowserTier(files, urls, wantFiles, options) {
-  const launched = await launchBrowser();
+  const launched = await launchBrowser(Object.keys(options.headers).length > 0);
   if (!launched.browser) {
     process.stderr.write(`scan.mjs: browser rules skipped (${launched.error}).\n`);
     return null;
@@ -125,8 +125,14 @@ function mergeReports(files, staticReports, browserByTarget) {
     const kept = browserFound ? staticReports[index].filter((report) => !BROWSER_AUTHORITATIVE.has(report.rule)) : staticReports[index];
     reports.push(...kept, ...(browserFound || []));
   }
-  for (const [target, found] of browserByTarget || []) if (!files.includes(target)) reports.push(...found);
+  for (const [target, found] of browserByTarget || []) if (!files.includes(target)) reports.push(...(found || []));
   return reports;
+}
+
+// A failed page scan is stored as null. Exit 2 only when every browser target failed.
+function everyScanFailed(browserByTarget) {
+  const results = [...(browserByTarget?.values() || [])];
+  return results.length > 0 && results.every((found) => found === null);
 }
 
 export async function main(args) {
@@ -152,5 +158,6 @@ export async function main(args) {
   const browserByTarget = needBrowser ? await runBrowserTier(files, urls, browser, { headers: buildHeaders(parsed), settleMs: parsed.settleMs }) : null;
   const reports = mergeReports(files, staticReports, browserByTarget);
   printReports(reports, json);
+  if (everyScanFailed(browserByTarget)) return 2;
   return reports.length ? 1 : 0;
 }

@@ -27,9 +27,9 @@ findings, 1: findings, 2: usage error. Page-level findings that have no source l
 Browser-tier options: pages are opened with the page's Content-Security-Policy bypassed (so the scan script can run),
 after `load` the scanner waits for the network to go idle (best effort) plus `--settle-ms` (default 1000) so
 data-driven pages finish rendering. `--header "Name: value"` and `--cookie "name=value"` are repeatable and scan
-logged-in pages: they are sent as extra HTTP headers on every request of the browser context (cookie flags merge into
-one `Cookie` header; this also reaches third-party origins the page loads, so use them on pages you trust) and their
-values are never printed. A page that fails to scan is reported on stderr and skipped, not fatal.
+logged-in pages: they are added only to requests for the scanned URL's own origin (cookie flags merge into one `Cookie` header;
+other origins the page loads never receive them; runs with credentials also relax Chromium's Local Network Access check so such pages can still load loopback resources) and their values are never printed. A page that fails to scan is
+reported on stderr and skipped; the exit code is 2 only when every browser target failed.
 Pixel contrast rates only the strongest glyph pixels (at least half the maximum change when text is hidden), and
 flags text only when both the 10th percentile and the median ratio are below the threshold.
 
