@@ -1,0 +1,28 @@
+{
+  "name": "custom-design-scan",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Static anti-pattern scanner used by the custom-design skill.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "css-select": "7.0.0",
+    "css-tree": "3.2.1",
+    "domutils": "4.0.2",
+    "htmlparser2": "12.0.0"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.40.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": true
+    }
+  }
+}

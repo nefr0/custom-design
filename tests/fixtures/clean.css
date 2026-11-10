@@ -1,0 +1,4 @@
+:root { --ink: #111111; --paper: #ffffff; }
+body { color: var(--ink); background: var(--paper); line-height: 1.6; }
+.card { border: 1px solid #dddddd; border-radius: 4px; padding: 24px; }
+.link { transition: color 0.2s ease-out; }

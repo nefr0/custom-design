@@ -1,0 +1,9 @@
+.card { border-left: 4px solid #e11d48; border-radius: 12px; }
+.tab::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: #2563eb; }
+.panel { box-shadow: inset 4px 0 0 #2563eb; }
+.glow { box-shadow: 0 0 30px rgba(124, 58, 237, 0.6); }
+.headline { background: linear-gradient(90deg, #7c3aed, #06b6d4); -webkit-background-clip: text; background-clip: text; }
+.ticker { animation: slide 10s linear infinite; }
+@keyframes slide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.grid { background-image: linear-gradient(to right, #ccc 1px, transparent 1px), linear-gradient(to bottom, #ccc 1px, transparent 1px); background-size: 24px 24px; }
+.bounce { animation: bounce 1s infinite; transition: height 0.2s ease; }
