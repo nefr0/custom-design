@@ -9,7 +9,7 @@
   {"group":"Scanner","sub":"scan.mjs + scanner/","border":"dashed","color":"teal","icon":"scan-search","items":[
    {"id":"regex","label":"Regex tier","tech":"node built-ins","desc":"23 rules, no install","icon":"regex","color":"teal"},
    {"id":"static","label":"Static HTML tier","tech":"htmlparser2, css-tree (npm, pinned)","desc":"+14 rules; ignore-scripts","icon":"code","color":"teal"},
-   {"id":"browser","label":"Browser tier","tech":"playwright (optional peer)","desc":"+7 DOM rules; skipped if absent","icon":"globe","color":"teal"}]},
+   {"id":"browser","label":"Browser tier","tech":"playwright (optional peer)","desc":"+7 DOM rules + screenshot pixel contrast; skipped if absent","icon":"globe","color":"teal"}]},
   {"id":"agent","label":"Agent","tech":"Claude / Codex / Pi","desc":"Reads files, runs scan in verify","icon":"bot","color":"blue"}
  ],
  "edges": [
