@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Text over gradients</title>
+<style>
+body { margin: 0; font-family: sans-serif; background: #ffffff; }
+.band { padding: 32px; }
+.pale { background: linear-gradient(135deg, #e4ebf3, #f4f7fb); }
+.deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+.faint { color: #c9d3df; font-size: 18px; }
+.strong { color: #f8fafc; font-size: 18px; }
+</style>
+</head>
+<body>
+<section class="band pale"><p class="faint">Faint text on a pale gradient the static check cannot rate.</p></section>
+<section class="band deep"><p class="strong">Light text on a deep gradient reads fine.</p></section>
+</body>
+</html>

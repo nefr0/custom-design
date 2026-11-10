@@ -30,14 +30,14 @@ Tiers, from cheapest to richest. Each tier only adds findings; a missing tier ne
 |---|---|---|
 | regex / text | Node only | side-tab, border-accent-on-rounded, gradient-text, ai-color-palette, gray-on-color (Tailwind), bounce-easing, layout-transition, broken-image (attributes), monotonous-spacing, em-dash-overuse, marketing-buzzword, aphoristic-cadence, dark-glow, radial-halo, marquee, codex-grid-background, pulsing-dot, shape-assembled-illustration, organic-clip-path, buried-raster, repeating-stripes-gradient, theater-slop-phrase, image-hover-transform |
 | static html | `npm install` (htmlparser2, css-select, css-tree, domutils) | resolved-style versions of side-tab, border-accent-on-rounded, gradient-text, gray-on-color, ai-color-palette, low-contrast, broken-image, plus skipped-heading, nested-cards, cream-palette, flat-type-hierarchy, oversized-h1, gpt-thin-border-wide-shadow, tight-leading, justified-text, tiny-text, undersized-ui-text, all-caps-body, wide-tracking, extreme-negative-tracking, buried-raster (opacity) |
-| browser | Playwright already installed (optional, never installed by this repo) | low-contrast and broken-image on the rendered page, line-length, cramped-padding, body-text-viewport-edge, edge-flush-cards, first-viewport-column-overflow, content-hidden-at-rest, script-error |
+| browser | Playwright already installed (optional, never installed by this repo) | low-contrast (computed colors, plus screenshot pixel sampling for text over images, gradients and filters) and broken-image on the rendered page, line-length, cramped-padding, body-text-viewport-edge, edge-flush-cards, first-viewport-column-overflow, content-hidden-at-rest, script-error |
 
 Not ported (17 of the upstream 61 rules): the font rules overused-font and italic-serif-display; the design-system
 rules design-system-font, design-system-color, design-system-radius and design-system-font-size (they need a
 DESIGN.md model); and the rules that need deeper layout or cascade work than this scanner does: hero-eyebrow-chip,
 icon-tile-stack, kicker-above-heading, numbered-section-labels, repeated-container-text, radial-spotlight-glow,
-clipped-overflow-container, text-occlusion, text-overflow, heading-rhythm, blinking-cursor. Screenshot (pixel)
-contrast and the page overlay UI are also not ported. The agent's read-based review in `SKILL.md` still covers
+clipped-overflow-container, text-occlusion, text-overflow, heading-rhythm, blinking-cursor. The page overlay UI is also not ported (screenshot contrast is ported and
+runs in the browser tier, decoded in the page, so it needs no image library). The agent's read-based review in `SKILL.md` still covers
 all of these. Offline the scanner runs 37 rules; with the browser tier, 44.
 
 The scanner reads files, parses them, and prints. It imports only `node:fs`, `node:path`, `node:url` and

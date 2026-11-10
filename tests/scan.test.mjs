@@ -119,3 +119,19 @@ test('browser tier runs when playwright and chromium are available, otherwise sk
   const rules = rulesIn(out);
   assert.ok(rules.has('low-contrast') && rules.has('broken-image'), `browser rules missing: ${[...rules].join(', ')}`);
 });
+
+test('browser tier measures pixel contrast of text over a gradient', async (context) => {
+  const available = await canImport('playwright') || await canImport('playwright-core');
+  if (!available) {
+    context.skip('playwright is not importable');
+    return;
+  }
+  const { out, err } = runScan([path.join(FIXTURES, 'image-contrast.html'), '--browser']);
+  if (err.includes('browser rules skipped')) {
+    context.skip('chromium could not launch');
+    return;
+  }
+  const lines = out.split('\n').filter((line) => line.includes(' low-contrast '));
+  assert.equal(lines.length, 1, `expected one low-contrast finding, got: ${out}`);
+  assert.match(lines[0], /pixel contrast \d+\.\d:1 .*gradient background "Faint text/);
+});

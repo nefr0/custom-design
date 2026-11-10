@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { pixelContrastFindings } from './browser-contrast.mjs';
+
 const PAGE_SCRIPT = fs.readFileSync(new URL('./browser-page.js', import.meta.url), 'utf8');
 const VIEWPORT = { width: 1280, height: 800 };
 const NAVIGATION_TIMEOUT_MS = 30000;
@@ -47,6 +49,7 @@ export async function scanPage(browser, target) {
     await page.goto(toNavigationUrl(target), { waitUntil: 'load', timeout: NAVIGATION_TIMEOUT_MS });
     await page.addScriptTag({ content: PAGE_SCRIPT });
     const found = await page.evaluate(() => window.__designScan.run());
+    found.push(...await pixelContrastFindings(page));
     const errors = scriptErrors.slice(0, 3).map((message) => ({ id: 'script-error', detail: `Uncaught page error: ${message}` }));
     return [...found, ...errors].map(toFinding);
   } finally {
