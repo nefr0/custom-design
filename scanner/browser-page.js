@@ -278,6 +278,211 @@
     await new Promise((resolve) => setTimeout(resolve, 700));
   }
 
+  // ---- pixel contrast: text the static check cannot judge (images, gradients, filters), measured on screenshots ----
+  // Ported from Impeccable's screenshot contrast check. The Node side takes a screenshot with the text visible and
+  // one with it hidden, then compareShots() decodes both in the page (canvas) and rates every glyph pixel.
+
+  const PIXEL_SAFE_TAGS = new Set(['BLOCKQUOTE', 'NAV', 'A', 'INPUT', 'TEXTAREA', 'SELECT', 'PRE', 'CODE', 'SPAN', 'TH', 'TD', 'TR', 'LI', 'LABEL', 'BUTTON', 'HR', 'IMG', 'SVG']);
+  const UNDERLAY_TAGS = new Set(['IMG', 'PICTURE', 'VIDEO', 'CANVAS', 'SVG']);
+  const RENDERED_FOREGROUND = new Set(['opacity stack', 'blend mode', 'filter', 'backdrop filter', 'background-clip text']);
+  const MAX_PIXEL_CANDIDATES = 12;
+  const TARGET_ATTR = 'data-design-scan-target';
+  const HIDE_STYLE_ID = 'design-scan-hide-style';
+  const GLYPH_DELTA = 10;
+  const MIN_GLYPH_PIXELS = 8;
+
+  function ownTextRect(elem) {
+    const rects = [];
+    for (const node of elem.childNodes) {
+      if (node.nodeType !== 3 || !node.textContent.trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const rect of range.getClientRects()) if (rect.width >= 1 && rect.height >= 1) rects.push(rect);
+    }
+    if (rects.length === 0) return null;
+    const left = Math.min(...rects.map((rect) => rect.left));
+    const top = Math.min(...rects.map((rect) => rect.top));
+    return { left, top, width: Math.max(...rects.map((rect) => rect.right)) - left, height: Math.max(...rects.map((rect) => rect.bottom)) - top };
+  }
+
+  function layerReasons(style, isSurface) {
+    const reasons = [];
+    const image = style.backgroundImage || '';
+    if (!isSurface && /url\s*\(/i.test(image)) reasons.push('image background');
+    if (!isSurface && /gradient/i.test(image)) reasons.push('gradient background');
+    if (parseFloat(style.opacity) < 0.99) reasons.push('opacity stack');
+    if (style.mixBlendMode && style.mixBlendMode !== 'normal') reasons.push('blend mode');
+    if (style.filter && style.filter !== 'none') reasons.push('filter');
+    if (style.backdropFilter && style.backdropFilter !== 'none') reasons.push('backdrop filter');
+    return reasons;
+  }
+
+  function ancestorReasons(elem) {
+    const reasons = [];
+    for (let cur = elem; cur && cur.nodeType === 1; cur = cur.parentElement) {
+      const style = getComputedStyle(cur);
+      reasons.push(...layerReasons(style, cur === document.body || cur === document.documentElement));
+      const image = style.backgroundImage || '';
+      if (toRgba(style.backgroundColor).alpha >= 0.95 && (!image || image === 'none')) break;
+    }
+    return reasons;
+  }
+
+  function underlayReasons(elem, rect) {
+    const reasons = [];
+    const inside = (xPos, yPos) => xPos >= 0 && yPos >= 0 && xPos <= window.innerWidth && yPos <= window.innerHeight;
+    for (const share of [0.5, 0.25, 0.75]) {
+      const xPos = rect.left + Math.min(rect.width - 1, Math.max(1, rect.width * share));
+      const yPos = rect.top + rect.height / 2;
+      if (!inside(xPos, yPos)) continue;
+      const stack = document.elementsFromPoint(xPos, yPos);
+      const selfAt = stack.findIndex((node) => node === elem || elem.contains(node) || node.contains(elem));
+      const below = selfAt < 0 ? undefined : stack.slice(selfAt + 1).find((node) => UNDERLAY_TAGS.has(node.tagName.toUpperCase()));
+      if (below) reasons.push(`${below.tagName.toLowerCase()} underlay`);
+    }
+    return reasons;
+  }
+
+  function pixelReasons(elem, style, rect) {
+    const reasons = new Set(ancestorReasons(elem));
+    if ((style.webkitBackgroundClip || style.backgroundClip) === 'text' && style.backgroundImage !== 'none') reasons.add('background-clip text');
+    if (style.textShadow && style.textShadow !== 'none') reasons.add('text shadow');
+    for (const reason of underlayReasons(elem, rect)) reasons.add(reason);
+    return [...reasons];
+  }
+
+  function isPixelCandidate(elem, style, rect) {
+    if (elem === document.body || elem === document.documentElement || !isRendered(elem, style, rect)) return false;
+    if (directTextLength(elem) === 0 || /^[\p{Extended_Pictographic}\s\uFE0F\u200D]+$/u.test(elem.textContent.trim())) return false;
+    const styledControl = ['A', 'BUTTON'].includes(elem.tagName) && toRgba(style.backgroundColor).alpha > 0.5;
+    return !PIXEL_SAFE_TAGS.has(elem.tagName) || styledControl;
+  }
+
+  function clipAround(rect) {
+    return {
+      x: Math.max(0, Math.floor(rect.left + window.scrollX - 2)),
+      y: Math.max(0, Math.floor(rect.top + window.scrollY - 2)),
+      width: Math.max(1, Math.ceil(rect.width + 4)),
+      height: Math.max(1, Math.ceil(rect.height + 4)),
+    };
+  }
+
+  function pixelCandidate(elem, index) {
+    const style = getComputedStyle(elem);
+    const bounds = elem.getBoundingClientRect();
+    if (!isPixelCandidate(elem, style, bounds) || contrastFinding(elem, style, bounds)) return null;
+    const rect = ownTextRect(elem) || bounds;
+    if (rect.width < 4 || rect.height < 4) return null;
+    const reasons = pixelReasons(elem, style, rect);
+    if (reasons.length === 0) return null;
+    const color = toRgba(style.color);
+    const size = parseFloat(style.fontSize) || 16;
+    const large = size >= 24 || (size >= 18.66 && (parseInt(style.fontWeight, 10) || 400) >= 700);
+    elem.setAttribute(TARGET_ATTR, String(index));
+    return {
+      index,
+      text: elem.textContent.replace(/\s+/g, ' ').trim().slice(0, 80),
+      threshold: large ? 3 : 4.5,
+      reasons,
+      clip: clipAround(rect),
+      textColor: { red: color.red, green: color.green, blue: color.blue },
+      renderedForeground: color.alpha < 0.99 || reasons.some((reason) => RENDERED_FOREGROUND.has(reason)),
+      clipsText: reasons.includes('background-clip text'),
+    };
+  }
+
+  function contrastCandidates() {
+    const candidates = [];
+    for (const elem of document.querySelectorAll('body *')) {
+      if (candidates.length >= MAX_PIXEL_CANDIDATES) break;
+      const candidate = pixelCandidate(elem, candidates.length);
+      if (candidate) candidates.push(candidate);
+    }
+    return candidates;
+  }
+
+  function targetOf(index) {
+    return document.querySelector(`[${TARGET_ATTR}="${index}"]`);
+  }
+
+  function ensureHideStyle() {
+    if (document.getElementById(HIDE_STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = HIDE_STYLE_ID;
+    style.textContent = `[data-design-scan-hide] { color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; }
+[data-design-scan-hide][data-design-scan-clip] { background-image: none !important; }`;
+    document.head.appendChild(style);
+  }
+
+  function hideText(index, clipsText) {
+    const elem = targetOf(index);
+    if (!elem) return false;
+    ensureHideStyle();
+    elem.setAttribute('data-design-scan-hide', '');
+    if (clipsText) elem.setAttribute('data-design-scan-clip', '');
+    return true;
+  }
+
+  function showText(index) {
+    const elem = targetOf(index);
+    if (elem) elem.removeAttribute('data-design-scan-hide');
+    if (elem) elem.removeAttribute('data-design-scan-clip');
+  }
+
+  function decodeImage(base64) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('could not decode contrast screenshot'));
+      image.src = `data:image/png;base64,${base64}`;
+    });
+  }
+
+  function readPixels(context, image, width, height) {
+    context.clearRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    return context.getImageData(0, 0, width, height).data;
+  }
+
+  function pixelAt(data, offset) {
+    return { red: data[offset], green: data[offset + 1], blue: data[offset + 2] };
+  }
+
+  function glyphRatios(before, after, fixedText) {
+    const ratios = [];
+    for (let offset = 0; offset < before.length; offset += 4) {
+      const delta = [0, 1, 2, 3].reduce((sum, channel) => sum + Math.abs(before[offset + channel] - after[offset + channel]), 0);
+      if (delta >= GLYPH_DELTA) ratios.push(contrast(fixedText || pixelAt(before, offset), pixelAt(after, offset)));
+    }
+    return ratios.sort((one, two) => one - two);
+  }
+
+  function percentile(sorted, pct) {
+    return sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor((pct / 100) * sorted.length)))];
+  }
+
+  function pixelDetail(ratios, candidate) {
+    if (ratios.length < MIN_GLYPH_PIXELS) return null;
+    const measured = percentile(ratios, 10);
+    if (measured >= candidate.threshold) return null;
+    const reason = candidate.reasons.slice(0, 3).join(', ');
+    return `pixel contrast ${measured.toFixed(1)}:1 median ${percentile(ratios, 50).toFixed(1)}:1 (need ${candidate.threshold}:1) on ${reason} "${candidate.text}"`;
+  }
+
+  async function compareShots(beforeBase64, afterBase64, candidate) {
+    const [before, after] = await Promise.all([decodeImage(beforeBase64), decodeImage(afterBase64)]);
+    const width = Math.min(before.width, after.width);
+    const height = Math.min(before.height, after.height);
+    if (width < 1 || height < 1) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    const beforeData = readPixels(context, before, width, height);
+    const afterData = readPixels(context, after, width, height);
+    return pixelDetail(glyphRatios(beforeData, afterData, candidate.renderedForeground ? null : candidate.textColor), candidate);
+  }
+
   async function run() {
     const findings = [];
     for (const elem of document.querySelectorAll('body, body *')) findings.push(...elementFindings(elem));
@@ -287,5 +492,5 @@
     return findings;
   }
 
-  window.__designScan = { run };
+  window.__designScan = { run, contrastCandidates, hideText, showText, compareShots };
 })();

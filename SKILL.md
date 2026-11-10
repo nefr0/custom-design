@@ -34,7 +34,7 @@ resolve against that body's folder (`impeccable/` or `apple/`).
      full rule set; without it only the regex-tier rules run. `--browser` and `--url <url|file>` add rendered-page
      rules only when Playwright is already installed; otherwise they are skipped with a note.
    - Then do the read-based check below. Keep it: it is the fallback when node is missing and covers what the
-     scanner does not (font and layout judgment, rendered contrast on images).
+     scanner does not (font and layout judgment; rendered contrast on images when the browser tier is unavailable).
    - Re-read your diff against the `craft-floor.md` sections "Verify" and "Refuse" (the bans checklist) and the
      rules at the bottom of this file. Quote the offending line for each hit.
    - Look at the rendered result at phone and desktop sizes when you can run the app (skill `ui-mockup` if your
