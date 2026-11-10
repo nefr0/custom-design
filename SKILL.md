@@ -1,6 +1,6 @@
 ---
 name: custom-design
-description: UI/UX design for any web, mobile or desktop interface - build, redesign, review, critique, audit, polish, make less generic, typography, color, layout, motion, dark mode, accessibility, responsive, UX copy, design systems (PRODUCT.md, DESIGN.md), Apple HIG and platform conventions (iOS, iPadOS, macOS). Single entry point for the bundled Impeccable and apple-design material. Text only, nothing to execute.
+description: UI/UX design for any web, mobile or desktop interface - build, redesign, review, critique, audit, polish, make less generic, typography, color, layout, motion, dark mode, accessibility, responsive, UX copy, design systems (PRODUCT.md, DESIGN.md), Apple HIG and platform conventions (iOS, iPadOS, macOS). Single entry point for the bundled Impeccable and apple-design material. Text plus a Node scanner (scan.mjs).
 ---
 # custom-design (router)
 
@@ -8,8 +8,9 @@ One skill, two bundled bodies of text. All paths below are relative to this skil
 - **Impeccable** (craft, anti-slop, build and refine commands, review playbooks): `impeccable/`
 - **apple-design** (Apple HIG, 123 pages, review lenses): `apple/`
 
-**Paradigm: text only.** You (the agent) read files and apply them by hand. There are no scripts, hooks,
-engines, launchers, downloads or network calls in this skill, and nothing in it should ever be executed.
+**Paradigm: text plus a Node scanner.** You (the agent) read files and apply them by hand. The one program is
+`scan.mjs`, a static, offline checker (see step 5). There are no hooks, launchers, binaries or downloads: npm
+dependencies are allowed, but no binaries, no binary-downloading packages and no curl/wget install scripts.
 Where a bundled file mentions a command such as `/impeccable polish` or `init`, it names a playbook:
 open the matching `impeccable/reference/<name>.md` and follow it yourself.
 
@@ -25,7 +26,15 @@ resolve against that body's folder (`impeccable/` or `apple/`).
 3. **Before any UI edit**, read `impeccable/reference/craft-floor.md` (4 KB): the quality floor and the bans.
 4. **Edit**, matching the existing code's tokens, components and icon set. Refinement keeps the identity; only a
    requested redesign replaces it.
-5. **Verify once, then fix in one batch, by reading:**
+5. **Verify once, then fix in one batch:**
+   - If `node` is available, first run `node <skill-dir>/scan.mjs <changed files>` (`<skill-dir>` is this
+     directory; add `--json` for structured output). It is static and offline, checks 37 anti-pattern rules (44 with the browser tier)
+     on html, css, jsx, tsx, vue, svelte and astro files, prints `path:line rule-id severity message`, and exits 1
+     when it finds something. Fix every hit. If it says to run `npm install`, run it once in `<skill-dir>` for the
+     full rule set; without it only the regex-tier rules run. `--browser` and `--url <url|file>` add rendered-page
+     rules only when Playwright is already installed; otherwise they are skipped with a note.
+   - Then do the read-based check below. Keep it: it is the fallback when node is missing and covers what the
+     scanner does not (font and layout judgment, rendered contrast on images).
    - Re-read your diff against the `craft-floor.md` sections "Verify" and "Refuse" (the bans checklist) and the
      rules at the bottom of this file. Quote the offending line for each hit.
    - Look at the rendered result at phone and desktop sizes when you can run the app (skill `ui-mockup` if your
