@@ -290,6 +290,7 @@
   const HIDE_STYLE_ID = 'design-scan-hide-style';
   const GLYPH_DELTA = 10;
   const MIN_GLYPH_PIXELS = 8;
+  const CORE_DELTA_SHARE = 0.5;
 
   function ownTextRect(elem) {
     const rects = [];
@@ -448,12 +449,23 @@
     return { red: data[offset], green: data[offset + 1], blue: data[offset + 2] };
   }
 
+  // Glyph pixels are those that change when the text is hidden. Anti-aliased edge pixels change only a little, so
+  // only "core" pixels (change of at least CORE_DELTA_SHARE of the strongest change) are rated; edges alone would
+  // read as low contrast on any readable text.
   function glyphRatios(before, after, fixedText) {
-    const ratios = [];
+    const deltas = [];
+    let strongest = 0;
     for (let offset = 0; offset < before.length; offset += 4) {
       const delta = [0, 1, 2, 3].reduce((sum, channel) => sum + Math.abs(before[offset + channel] - after[offset + channel]), 0);
-      if (delta >= GLYPH_DELTA) ratios.push(contrast(fixedText || pixelAt(before, offset), pixelAt(after, offset)));
+      deltas.push(delta);
+      strongest = Math.max(strongest, delta);
     }
+    const floor = Math.max(GLYPH_DELTA, strongest * CORE_DELTA_SHARE);
+    const ratios = [];
+    deltas.forEach((delta, index) => {
+      const offset = index * 4;
+      if (delta >= floor) ratios.push(contrast(fixedText || pixelAt(before, offset), pixelAt(after, offset)));
+    });
     return ratios.sort((one, two) => one - two);
   }
 
@@ -464,7 +476,7 @@
   function pixelDetail(ratios, candidate) {
     if (ratios.length < MIN_GLYPH_PIXELS) return null;
     const measured = percentile(ratios, 10);
-    if (measured >= candidate.threshold) return null;
+    if (measured >= candidate.threshold || percentile(ratios, 50) >= candidate.threshold) return null;
     const reason = candidate.reasons.slice(0, 3).join(', ');
     return `pixel contrast ${measured.toFixed(1)}:1 median ${percentile(ratios, 50).toFixed(1)}:1 (need ${candidate.threshold}:1) on ${reason} "${candidate.text}"`;
   }

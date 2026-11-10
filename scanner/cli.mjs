@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import process from 'node:process';
 
 import { describeRule } from './registry.mjs';
-import { launchBrowser, scanPage } from './browser.mjs';
+import { DEFAULT_SETTLE_MS, launchBrowser, scanPage } from './browser.mjs';
 import { scanContent } from './scan-content.mjs';
 import { loadStaticModules } from './static-html.mjs';
 import { collectFiles } from './walk.mjs';
@@ -11,7 +11,7 @@ import { collectFiles } from './walk.mjs';
 const BROWSER_AUTHORITATIVE = new Set(['low-contrast', 'broken-image']);
 const HTML_FILE = /\.html?$/i;
 
-export const USAGE = 'usage: node scan.mjs <files-or-dirs...> [--json] [--browser] [--url <http(s)://...|file>]\n';
+export const USAGE = 'usage: node scan.mjs <files-or-dirs...> [--json] [--browser] [--url <http(s)://...|file>]\n       [--header "Name: value"]... [--cookie "name=value"]... [--settle-ms <n>]\n';
 
 function buildReport(filePath, found) {
   const rule = describeRule(found.id);
@@ -30,15 +30,52 @@ export function scanFile(filePath, modules) {
 
 const FLAGS = { '--json': 'json', '--browser': 'browser' };
 
+function parseHeader(text) {
+  const colon = text.indexOf(':');
+  const name = text.slice(0, colon).trim();
+  return colon > 0 && /^[\w!#$%&'*+.^`|~-]+$/.test(name) ? [name.toLowerCase(), text.slice(colon + 1).trim()] : null;
+}
+
+function addAuth(parsed, flag, text) {
+  if (flag === '--cookie') {
+    if (/^[^=;\s]+=/.test(text)) parsed.cookies.push(text.trim());
+    else parsed.invalid.push(flag);
+    return;
+  }
+  const header = parseHeader(text);
+  if (header) parsed.headers.push(header);
+  else parsed.invalid.push(flag);
+}
+
+function addSettle(parsed, text) {
+  if (/^\d+$/.test(text)) parsed.settleMs = Number(text);
+  else parsed.invalid.push('--settle-ms');
+}
+
 function parseArguments(args) {
-  const parsed = { json: false, browser: false, urls: [], unknown: [], targets: [] };
+  const parsed = { json: false, browser: false, urls: [], unknown: [], targets: [], headers: [], cookies: [], invalid: [], settleMs: DEFAULT_SETTLE_MS };
   for (let idx = 0; idx < args.length; idx++) {
     const arg = args[idx];
     if (FLAGS[arg]) parsed[FLAGS[arg]] = true;
     else if (arg === '--url') parsed.urls.push(args[++idx] ?? '');
+    else if (arg === '--header' || arg === '--cookie') addAuth(parsed, arg, args[++idx] ?? '');
+    else if (arg === '--settle-ms') addSettle(parsed, args[++idx] ?? '');
     else (arg.startsWith('-') ? parsed.unknown : parsed.targets).push(arg);
   }
   return parsed;
+}
+
+// Header names are lowercased; all cookie flags (and any --header Cookie) merge into one Cookie header.
+function buildHeaders(parsed) {
+  const headers = {};
+  const cookies = [];
+  for (const [name, value] of parsed.headers) {
+    if (name === 'cookie') cookies.push(value);
+    else headers[name] = value;
+  }
+  cookies.push(...parsed.cookies);
+  if (cookies.length) headers.cookie = cookies.join('; ');
+  return headers;
 }
 
 function printReports(reports, json) {
@@ -51,16 +88,21 @@ function printReports(reports, json) {
   }
 }
 
-async function browserReports(browser, target) {
+function redact(message, secrets) {
+  return secrets.reduce((text, secret) => (secret ? text.split(secret).join('[redacted]') : text), message);
+}
+
+async function browserReports(browser, target, options) {
   try {
-    return (await scanPage(browser, target)).map((found) => buildReport(target, found));
+    return (await scanPage(browser, target, options)).map((found) => buildReport(target, found));
   } catch (error) {
-    process.stderr.write(`scan.mjs: browser scan of ${target} failed: ${String(error.message).split('\n')[0]}\n`);
+    const secrets = Object.values(options.headers).flatMap((value) => [value, ...value.split('; ')]);
+    process.stderr.write(`scan.mjs: browser scan of ${target} failed: ${redact(String(error.message).split('\n')[0], secrets)}\n`);
     return [];
   }
 }
 
-async function runBrowserTier(files, urls, wantFiles) {
+async function runBrowserTier(files, urls, wantFiles, options) {
   const launched = await launchBrowser();
   if (!launched.browser) {
     process.stderr.write(`scan.mjs: browser rules skipped (${launched.error}).\n`);
@@ -69,7 +111,7 @@ async function runBrowserTier(files, urls, wantFiles) {
   const byTarget = new Map();
   try {
     const targets = [...urls, ...(wantFiles ? files.filter((file) => HTML_FILE.test(file)) : [])];
-    for (const target of targets) byTarget.set(target, await browserReports(launched.browser, target));
+    for (const target of targets) byTarget.set(target, await browserReports(launched.browser, target, options));
   } finally {
     await launched.browser.close();
   }
@@ -88,7 +130,12 @@ function mergeReports(files, staticReports, browserByTarget) {
 }
 
 export async function main(args) {
-  const { json, browser, urls, unknown, targets } = parseArguments(args);
+  const parsed = parseArguments(args);
+  const { json, browser, urls, unknown, targets, invalid } = parsed;
+  if (invalid.length) {
+    process.stderr.write(`invalid value for ${invalid[0]}\n${USAGE}`);
+    return 2;
+  }
   if (unknown.length || urls.includes('') || (targets.length === 0 && urls.length === 0)) {
     process.stderr.write(`${unknown.length ? `unknown option: ${unknown[0]}\n` : ''}${USAGE}`);
     return 2;
@@ -102,7 +149,7 @@ export async function main(args) {
   if (!modules && files.length) process.stderr.write('scan.mjs: run npm install for full rules (HTML style analysis skipped).\n');
   const staticReports = files.map((filePath) => scanFile(filePath, modules));
   const needBrowser = urls.length > 0 || (browser && files.some((file) => HTML_FILE.test(file)));
-  const browserByTarget = needBrowser ? await runBrowserTier(files, urls, browser) : null;
+  const browserByTarget = needBrowser ? await runBrowserTier(files, urls, browser, { headers: buildHeaders(parsed), settleMs: parsed.settleMs }) : null;
   const reports = mergeReports(files, staticReports, browserByTarget);
   printReports(reports, json);
   return reports.length ? 1 : 0;

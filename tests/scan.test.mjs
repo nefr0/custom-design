@@ -1,7 +1,8 @@
 // Tests for scan.mjs. Only node:test and node:assert are used for assertions; node:child_process
 // is used here (and nowhere in the scanner) to run the CLI as a user would.
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -134,4 +135,67 @@ test('browser tier measures pixel contrast of text over a gradient', async (cont
   const lines = out.split('\n').filter((line) => line.includes(' low-contrast '));
   assert.equal(lines.length, 1, `expected one low-contrast finding, got: ${out}`);
   assert.match(lines[0], /pixel contrast \d+\.\d:1 .*gradient background "Faint text/);
+});
+
+async function browserReady(context) {
+  if (!await canImport('playwright') && !await canImport('playwright-core')) {
+    context.skip('playwright is not importable');
+    return false;
+  }
+  const { err } = runScan([path.join(FIXTURES, 'clean.html'), '--browser']);
+  if (err.includes('browser rules skipped')) {
+    context.skip('chromium could not launch');
+    return false;
+  }
+  return true;
+}
+
+test('browser tier does not flag readable bold text in a blurred sticky header', async (context) => {
+  if (!await browserReady(context)) return;
+  const { out, err } = runScan([path.join(FIXTURES, 'backdrop-header.html'), '--browser']);
+  assert.ok(!out.includes(' low-contrast '), `readable header flagged: ${out}${err}`);
+});
+
+test('browser tier scans a page whose CSP forbids inline scripts', async (context) => {
+  if (!await browserReady(context)) return;
+  const { err } = runScan([path.join(FIXTURES, 'csp-strict.html'), '--browser']);
+  assert.ok(!err.includes('failed'), `scan crashed: ${err}`);
+});
+
+test('malformed --header, --cookie and --settle-ms values exit 2 without echoing the value', () => {
+  for (const args of [['--header', 'no-colon-SECRET'], ['--cookie', 'novalue'], ['--settle-ms', 'soon']]) {
+    const { status, err } = runScan(['--url', 'http://127.0.0.1:9/', ...args]);
+    assert.equal(status, 2);
+    assert.ok(!err.includes('SECRET') && !err.includes('novalue') && !err.includes('soon'), err);
+  }
+});
+
+function runScanAsync(args) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [path.join(ROOT, 'scan.mjs'), ...args]);
+    let out = '';
+    let err = '';
+    child.stdout.on('data', (chunk) => { out += chunk; });
+    child.stderr.on('data', (chunk) => { err += chunk; });
+    child.on('close', (status) => resolve({ status, out, err }));
+  });
+}
+
+test('--cookie and --header reach the page as request headers and are never printed', async (context) => {
+  if (!await browserReady(context)) return;
+  const faint = '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>t</title></head><body style="background:#fff"><p style="color:#eeeeee;font-size:18px">Logged in only</p></body></html>';
+  const server = http.createServer((req, res) => {
+    const authed = req.headers.cookie === 'sid=SECRETCOOKIE; theme=dark' && req.headers['x-test'] === 'SECRETHEADER';
+    res.setHeader('content-type', 'text/html');
+    res.end(authed ? faint : '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>t</title></head><body><p>Please sign in</p></body></html>');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const url = `http://127.0.0.1:${server.address().port}/`;
+    const { out, err } = await runScanAsync(['--url', url, '--cookie', 'sid=SECRETCOOKIE', '--cookie', 'theme=dark', '--header', 'X-Test: SECRETHEADER', '--settle-ms', '0']);
+    assert.ok(out.includes(' low-contrast '), `authed page was not scanned: ${out}${err}`);
+    assert.ok(!(out + err).includes('SECRET'), 'header values leaked into output');
+  } finally {
+    server.close();
+  }
 });

@@ -8,6 +8,8 @@ import { pixelContrastFindings } from './browser-contrast.mjs';
 const PAGE_SCRIPT = fs.readFileSync(new URL('./browser-page.js', import.meta.url), 'utf8');
 const VIEWPORT = { width: 1280, height: 800 };
 const NAVIGATION_TIMEOUT_MS = 30000;
+const IDLE_TIMEOUT_MS = 10000;
+export const DEFAULT_SETTLE_MS = 1000;
 
 async function importPlaywright() {
   try {
@@ -41,18 +43,28 @@ function toFinding(found) {
   return { id: found.id, snippet: found.detail, line: 1 };
 }
 
-export async function scanPage(browser, target) {
-  const page = await browser.newPage({ viewport: VIEWPORT });
-  const scriptErrors = [];
-  page.on('pageerror', (error) => scriptErrors.push(String(error.message).split('\n')[0]));
+// Pages render data after `load`: wait for the network to go quiet (best effort), then let the page settle.
+async function waitUntilSettled(page, settleMs) {
+  await page.waitForLoadState('networkidle', { timeout: IDLE_TIMEOUT_MS }).catch(() => {});
+  if (settleMs > 0) await page.waitForTimeout(settleMs);
+}
+
+// bypassCSP lets the injected scan script run on pages whose policy forbids inline scripts.
+// Header values (cookies, tokens) are only handed to the browser context, never printed.
+export async function scanPage(browser, target, options = {}) {
+  const context = await browser.newContext({ viewport: VIEWPORT, bypassCSP: true, extraHTTPHeaders: options.headers || {} });
   try {
+    const page = await context.newPage();
+    const scriptErrors = [];
+    page.on('pageerror', (error) => scriptErrors.push(String(error.message).split('\n')[0]));
     await page.goto(toNavigationUrl(target), { waitUntil: 'load', timeout: NAVIGATION_TIMEOUT_MS });
+    await waitUntilSettled(page, options.settleMs ?? DEFAULT_SETTLE_MS);
     await page.addScriptTag({ content: PAGE_SCRIPT });
     const found = await page.evaluate(() => window.__designScan.run());
     found.push(...await pixelContrastFindings(page));
     const errors = scriptErrors.slice(0, 3).map((message) => ({ id: 'script-error', detail: `Uncaught page error: ${message}` }));
     return [...found, ...errors].map(toFinding);
   } finally {
-    await page.close();
+    await context.close();
   }
 }

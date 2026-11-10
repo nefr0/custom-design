@@ -32,7 +32,9 @@ resolve against that body's folder (`impeccable/` or `apple/`).
      on html, css, jsx, tsx, vue, svelte and astro files, prints `path:line rule-id severity message`, and exits 1
      when it finds something. Fix every hit. If it says to run `npm install`, run it once in `<skill-dir>` for the
      full rule set; without it only the regex-tier rules run. `--browser` and `--url <url|file>` add rendered-page
-     rules only when Playwright is already installed; otherwise they are skipped with a note.
+     rules only when Playwright is already installed; otherwise they are skipped with a note. For logged-in pages add
+     `--cookie "name=value"` or `--header "Name: value"` (repeatable; values are never printed); `--settle-ms <n>` (default 1000)
+     waits after network idle for data-driven pages.
    - Then do the read-based check below. Keep it: it is the fallback when node is missing and covers what the
      scanner does not (font and layout judgment; rendered contrast on images when the browser tier is unavailable).
    - Re-read your diff against the `craft-floor.md` sections "Verify" and "Refuse" (the bans checklist) and the
